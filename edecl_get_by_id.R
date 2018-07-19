@@ -9,29 +9,31 @@ library(readxl)
 
 source("edecl_functions.R")
 
+# Вказати кількість вкладок і назву файлу з деклараціями
 councils <- vector("list", 4)
 names(councils) <- excel_sheets("data/Декларации Херсонщина.xlsx")
 
+# Зчитуємо і уніфікуємо лінки з деклараціями
 for(i in names(councils)){
   councils[[i]] <- read_excel("data/Декларации Херсонщина.xlsx",
                                        sheet = i, col_names = c("fullname", "id")) %>% 
     filter(!is.na(id)) %>% 
+    filter(str_detect(id, "ua")) %>% 
     mutate(id = paste0(str_replace(id, "https://public.nazk.gov.ua/declaration/", "https://declarations.com.ua/declaration/nacp_"),
                        "?format=opendata"))
 }
 
-# test <- read_csv("output/by_id/Тернопільська міська рада/step11.csv")
 councils_df <- bind_rows(councils, .id = "council") %>% 
   filter(!is.na(id))
 
-# map(councils, ~print(.[, "id"]))
+# Закачуємо з declarations.com.ua
 decl <- map(councils_df$id, fromJSON) %>%
   map("declaration")
 
+# Розкидаємо декларації по радах і розділах деклараціій
 all_deps_splitted <- split(decl, councils_df$council)
 
 steps_to_write_by_council <- map(all_deps_splitted, get_all_steps)
-# map(all_deps_splitted[[2]], ~.[["infocard"]]$created_date)
 
 # dir.create("output/by_id")
 map(paste0("output/by_id/", names(all_deps_splitted)), dir.create)
@@ -67,24 +69,3 @@ for(i in seq_along(steps_to_write_by_council)){
   }
   saveWorkbook(stepswb, stringnames[i], overwrite = TRUE)
 }
-
-# --------------------
-
-test[[1]]$unified_source[["step_3"]][[1]]$rights$`1`$rightBelongs
-
-step_rights_to_df <- function(x){
-  rights_df <- map(x[["unified_source"]][["step_3"]], ~.[["rights"]]) %>% 
-  map(1) %>% data.table::rbindlist(., fill = TRUE) 
-  
-  return(rights_df)
-}
-test_df <- map(test, step_rights_to_df) %>% 
-  data.table::rbindlist(., fill = TRUE, use.names = T) %>% 
-  select(dnt_ownershipType_encoded, ua_lastname, ukr_firstname, ukr_middlename,
-         rightBelongs, ua_company_name,
-         `percent-ownership`, citizen, ua_company_code)
-test_full <- bind_cols(steps_to_write_by_council[["Тернопільська обласна рада"]][["step3"]], test_df)
-
-table(test_full$person == test_full$rightBelongs)
-
-not_equal <- test_full[test_full$person != test_full$rightBelongs,]

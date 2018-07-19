@@ -60,7 +60,8 @@ worksheet_names <- c("Інфо", "Члени сім'ї", "Нерухомість
                      "Цінні папери", "Корпоративні права",
                      "Компанії", "Нематеріальні активи", "Доходи", "Грошові активи",
                      "Зобов'язання", "Видатки", "Сумісництво", "Членство")
-
+dir.create("output")
+dir.create("output/by_id")
 stepswb <- createWorkbook(paste0("output/by_id/", council_string, ".xlsx"))
 for(i in c(1:16)){
   addWorksheet(stepswb, worksheet_names[i])
