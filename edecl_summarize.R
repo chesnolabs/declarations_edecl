@@ -3,15 +3,16 @@ library(readxl)
 library(openxlsx)
 Sys.setenv("R_ZIPCMD" = "C:/Rtools/bin/zip.exe")
 
-source("edecl_summarize_functions.R")
+# Спершу запускаємо edecl_summarize_functions.R
 
-dir_steps <- "output/2017" # insert directory with steps here
+dir_steps <- "data/mps_2017" # insert directory with steps here
+
+# Доходи
 
 factions <- get_factions_open()
 income <- read_csv(paste0(dir_steps, "/step11.csv")) %>% 
+  mutate(fullname = str_replace(fullname, " - ", "-")) %>% 
   left_join(select(factions, -id), by = "fullname")
-
-income$sizeIncome <- as.numeric(income$sizeIncome)
 
 summary_income_by_mp <- income %>% 
   group_by(fullname, faction) %>% 
@@ -24,11 +25,10 @@ summary_income_by_faction <- income %>%
             mean_income = mean(sizeIncome, na.rm = T)) %>% 
   arrange(desc(median_income))
 
-# to do
-# create a histogram of income by faction?
-# summarize by major, by gender
+# Грошові активи
 
 assets <- read_csv(paste0(dir_steps, "/step12.csv")) %>% 
+  mutate(fullname = str_replace(fullname, " - ", "-")) %>% 
   left_join(select(factions, -id), by = "fullname")
 
 summary_assets_by_mp <- assets %>% 
@@ -42,8 +42,7 @@ summary_assets_by_faction <- assets %>%
             mean_assets = mean(in_hryvnias, na.rm = T)) %>% 
   arrange(desc(median_assets))
 
-# who holds in cash
-# percent of different currencies (beware of of bitcoins etc., counted as hryvnias)
+# Корпоративні права
 
 corporate_rights <- read_csv(paste0(dir_steps, "/step8.csv")) %>% 
   left_join(select(factions, -id), by = "fullname")
@@ -52,7 +51,8 @@ summary_corporate_rights_by_mp <- corporate_rights %>%
   group_by(fullname, faction) %>% 
   summarize(total_corporate_rights = sum(cost, na.rm = T)) %>% 
   arrange(desc(total_corporate_rights))
-# it doesn't has much sense to calculate this by faction
+
+# Зобов'язання
 
 liabilities <- read_csv(paste0(dir_steps, "/step13.csv")) %>% 
   left_join(select(factions, -id), by = "fullname")
@@ -67,6 +67,8 @@ summary_liabilities_by_mp <- liabilities %>%
   summarize(total_liabilities = sum(in_hryvnias, na.rm = T)) %>% 
   arrange(desc(total_liabilities))
 
+# Нерухомість
+
 estate <- read_csv(paste0(dir_steps, "/step3.csv")) %>% 
   left_join(select(factions, -id), by = "fullname") %>% 
   mutate(fullname = str_replace(fullname, " - ", "-"))
@@ -79,6 +81,13 @@ summary_estate_by_mp <- estate %>%
   mutate(total = sum(apt, dacha, garage, house, land, office, other, room, na.rm = T)) %>% 
   arrange(desc(total))
 
+# Цінні папери
+
+valuables <- read_csv(paste0(dir_steps, "/step5.csv")) %>% 
+  left_join(select(factions, -id), by = "fullname")
+valuables_vr <- valuables %>% 
+  filter(acqPeriod == "Майно набуто У ПЕРІОД здійснення суб'єктом декларування діяльності із виконання функцій держави або місцевого самоврядування")
+
 ls() %>% str_subset("summary_")
 worksheet_names <- c("Доходи за депутатом", "Доходи за фракцією",
                  "Статки за депутатом", "Статки за фракцією",
@@ -90,6 +99,7 @@ list_dfs <- list(summary_income_by_mp, summary_income_by_faction,
               summary_corporate_rights_by_mp,
               summary_liabilities_by_mp, summary_estate_by_mp)
 
+dir.create("output/summaries")
 stepswb <- createWorkbook("output/summaries/mps_2017_summaries.xlsx")
 for(i in seq_along(worksheet_names)){
   addWorksheet(stepswb, worksheet_names[i])
@@ -97,34 +107,13 @@ for(i in seq_along(worksheet_names)){
 }
 saveWorkbook(stepswb, "output/summaries/mps_2017_summaries.xlsx", overwrite = TRUE)
 
-# look for strange incomes
-table(income$dnt_objectType_encoded)
-table(income$otherObjectType)
-strange_bonus <- income %>% 
-  filter(str_detect(otherObjectType, "[Бб]онус"))
-strange_stip <- income %>% 
-  filter(str_detect(otherObjectType, "[Сс]типенд"))
-strange_dodatk <- income %>% 
-  filter(str_detect(otherObjectType, "[Дд]одаткове благо")) %>% 
-  select(fullname, sizeIncome, otherObjectType,
-         source_ua_company_name, declarant, subjectRelation, faction)
-
-get_strange_income <- function(string){
-  income %>% filter(str_detect(otherObjectType, string)) %>% 
-    select(fullname, sizeIncome, otherObjectType,
-           source_ua_company_name, declarant, subjectRelation, faction) %>%
-    arrange(desc(sizeIncome))
-}  
-strange_inshe <- get_strange_income("[Іі]нш")
-strange_nahoroda <- get_strange_income("[Нн]агорода")
-
-# compare to 2016
+# Порівняння з 2016 роком
 
 factions <- rbind(factions, 
                   c(id = "8757", fullname = "Денісова Людмила Леонтіївна", faction = "Народний фронт"),
                   c(id = "15674", fullname = "Пацкан Валерій Васильович", faction = "Блок Петра Порошенка"))
 
-income_16 <- read_excel("output/2016/mps_2016.xlsx", sheet = "Доходи") %>% 
+income_16 <- read_excel("data/mps_2016.xlsx", sheet = "Доходи") %>% 
   left_join(select(factions, -id), by = "fullname")
 
 income_16_summary_by_mp <- summarize_income_by_mp(income_16) %>% 
@@ -132,7 +121,7 @@ income_16_summary_by_mp <- summarize_income_by_mp(income_16) %>%
 income_16_summary_by_faction <- summarize_income_by_faction(income_16) %>% 
   rename(median_income_16 = median_income, mean_income_16 = mean_income)
 
-assets_16 <- read_excel("output/2016/mps_2016.xlsx", sheet = "Грошові активи") %>% 
+assets_16 <- read_excel("data/mps_2016.xlsx", sheet = "Грошові активи") %>% 
   left_join(select(factions, -id), by = "fullname")
 
 assets_16_summary_by_mp <- summarize_assets_by_mp(assets_16) %>% 
@@ -168,36 +157,16 @@ assets_difference_by_faction <- summary_assets_by_faction %>%
   arrange(desc(diff_median_assets)) %>% 
   select(faction, diff_median_assets, diff_mean_assets, everything())
 
-sum(income$sizeIncome)-sum(income_16$sizeIncome)
-sum(assets$in_hryvnias, na.rm = T)-sum(assets_16$in_hryvnias, na.rm = T)
-mean(income$sizeIncome)-mean(income_16$sizeIncome)
-mean(assets$in_hryvnias, na.rm = T)-mean(assets_16$in_hryvnias, na.rm = T)
-median(income$sizeIncome)-median(income_16$sizeIncome)
-median(assets$in_hryvnias, na.rm = T)-median(assets_16$in_hryvnias, na.rm = T)
-sum(income$sizeIncome)
-mean(income$sizeIncome)
-median(income$sizeIncome)
-sum(assets$in_hryvnias, na.rm = T)
-mean(assets$in_hryvnias, na.rm = T)
-median(assets$in_hryvnias, na.rm = T)
-
-# valuables
-
-valuables <- read_csv(paste0(dir_steps, "/step5.csv")) %>% 
-  left_join(select(factions, -id), by = "fullname")
-valuables_vr <- valuables %>% 
-  filter(acqPeriod == "Майно набуто У ПЕРІОД здійснення суб'єктом декларування діяльності із виконання функцій держави або місцевого самоврядування")
-
 worksheet_names_diff <- c("Зміна доходів", "Зміна доходів за фракцією",
                      "Зміна статків", "Зміна статків за фракцією",
                      "Цінності, період повноважень")
 
 # estate
 
-info_2016 <- read_excel("output/2016/mps_2016.xlsx", sheet = "Інфо") %>% 
+info_2016 <- read_excel("data/mps_2016.xlsx", sheet = "Інфо") %>% 
   mutate(fullname = str_replace(fullname, " - ", "-"))
 
-estate_2016 <- read_excel("output/2016/mps_2016.xlsx", sheet = "Нерухомість") %>% 
+estate_2016 <- read_excel("data/mps_2016.xlsx", sheet = "Нерухомість") %>% 
   left_join(select(factions, -id), by = "fullname") %>% 
   mutate(fullname = str_replace(fullname, " - ", "-"))
 
@@ -235,28 +204,6 @@ names_order <- c("fullname", sort(c(names(estate_diff)[!grepl("_", names(estate_
 
 estate_diff <- estate_diff[, names_order]
 
-morat <- get_voting_results(16006) %>% 
-  left_join(select(factions, fullname, shortname), by = "shortname")
-
-estate_morat <- estate_diff %>% 
-  left_join(select(morat, fullname, vote_simple), by = "fullname")
-
-estate_morat %>% 
-  group_by(vote_simple) %>% 
-  summarize(land_diff_mean =  mean(land_diff, na.rm = T))
-
-estate_morat %>% 
-  group_by(vote_simple) %>% 
-  summarize(land_mean =  mean(land, na.rm = T))
-
-estate_morat %>% 
-  group_by(vote_simple) %>% 
-  summarize(land_median =  median(land, na.rm = T))
-
-test <- estate_morat %>% 
-  ungroup() %>% 
-  select(fullname, land_diff, land, vote_simple)
-
 list_diff_dfs <- list(income_difference, income_difference_by_faction, 
                  assets_difference, assets_difference_by_faction,
                  estate_diff)
@@ -267,3 +214,4 @@ for(i in seq_along(worksheet_names_diff)){
   writeDataTable(stepswb, worksheet_names_diff[i], list_diff_dfs[[i]], withFilter = F, rowNames = F)
 }
 saveWorkbook(stepswb, "output/summaries/mps_2017_diff_summaries.xlsx", overwrite = TRUE)
+

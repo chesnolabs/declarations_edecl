@@ -3,19 +3,18 @@ get_factions_open <- function(){
   posts_ids <- read_tsv("http://data.rada.gov.ua/ogd/mps/skl8/mp-posts_unit.txt", 
                         locale(encoding = "windows-1251"), col_names = F, col_types = NULL) %>% 
     rename(unit_id = X1, unit = X2)
-  mps <- read_csv("http://data.rada.gov.ua/ogd/mps/skl8/mps08-data.csv") %>% 
-    mutate(shortname = paste(last_name, short_name))
+  mps <- read_csv("http://data.rada.gov.ua/ogd/mps/skl8/mps08-data.csv")
   
   factions_full <- posts %>% 
-    left_join(mps[, c("id", "full_name", "shortname")], by = c("mp_id" = "id")) %>% 
+    left_join(mps[, c("id", "full_name")], by = c("mp_id" = "id")) %>% 
     left_join(posts_ids) %>% 
     filter(unit_type %in% c("grp", "fra")) %>% 
-    select(mp_id, full_name, shortname, unit)
+    select(mp_id, full_name, unit)
   
   factions_df <-  mps %>% 
     filter(is.na(resignation_text)) %>% 
-    select(id, full_name, shortname) %>% 
-    left_join(factions_full, by = c("id" = "mp_id", "full_name", "shortname")) %>% 
+    select(id, full_name) %>% 
+    left_join(factions_full, by = c("id" = "mp_id", "full_name")) %>% 
     mutate(unit = ifelse(is.na(unit), "Позафракційні", unit)) %>% 
     rename(faction = unit, fullname = full_name) %>% 
     mutate(faction = recode(faction,
@@ -28,13 +27,7 @@ get_factions_open <- function(){
                             `Фракція Політичної партії "НАРОДНИЙ ФРОНТ"` = "Народний фронт",
                             `Фракція Політичної партії "Опозиційний блок" у Верховній Раді України восьмого скликання` = "Опозиційний блок",
                             `Фракція Радикальної партії Олега Ляшка` = "Радикальна партія Ляшка",
-                            `Фракція Політичної партії "Об'єднання "САМОПОМІЧ"` = "Самопоміч")) %>% 
-    mutate(shortname = str_replace(shortname, "'", "’"))
-  factions_df$shortname[factions_df$fullname == "Тимошенко Юлія Володимирівна"] <- "Тимошенко Юлія В."
-  factions_df$shortname[factions_df$fullname == "Тимошенко Юрій Володимирович"] <- "Тимошенко Юрій В."
-  factions_df$shortname[factions_df$fullname == "Найєм Мустафа-Масі"] <- "Найєм М. ."
-  factions_df$shortname[factions_df$fullname == "Джемілєв Мустафа"] <- "Джемілєв М. ."
-  
+                            `Фракція Політичної партії "Об'єднання "САМОПОМІЧ"` = "Самопоміч"))
   return(factions_df)
 }
 
